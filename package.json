@@ -1,0 +1,16 @@
+{
+  "name": "tingle-socket-server",
+  "version": "1.0.0",
+  "description": "Socket.IO server for Tingle live streaming app (live gifts, comments, PK battles, calls, messages)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
