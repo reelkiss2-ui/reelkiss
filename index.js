@@ -16,6 +16,18 @@
 const { createServer } = require('http')
 const { Server }       = require('socket.io')
 
+// ── Firebase Admin (optional, for Firestore live data) ─────────────────────────
+let db = null
+try {
+  const admin = require('firebase-admin')
+  if (!admin.apps.length) {
+    admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || 'reelkiss-97fa4' })
+  }
+  db = admin.firestore()
+} catch (e) {
+  console.warn('Firebase Admin not available:', e.message)
+}
+
 const PORT = process.env.PORT || 3333
 
 const httpServer = createServer((req, res) => {
@@ -137,6 +149,43 @@ io.on('connection', (socket) => {
   log('CONNECT', `user=${userId} socket=${socket.id}`)
 
   // ── LIVE ROOM ────────────────────────────────────────────────────────────────
+
+  // VIEWER requests single live object data (to initialize LiveController)
+  socket.on('fetchSingleLiveUser', async (raw) => {
+    const { liveHistoryId, liveUserObjId, userId: requesterId } = parse(raw)
+    if (!liveHistoryId) return
+    log('fetchSingleLiveUser', `requester=${requesterId} room=${liveHistoryId}`)
+
+    if (db) {
+      try {
+        // Try liveUserObjId first, then liveHistoryId
+        const docId = liveUserObjId || liveHistoryId
+        const doc = await db.collection('liveStreams').doc(docId).get()
+        if (doc.exists) {
+          socket.emit('singleLiveUserResponse', { _id: doc.id, ...doc.data() })
+          return
+        }
+      } catch (e) {
+        console.warn('fetchSingleLiveUser Firestore error:', e.message)
+      }
+    }
+
+    // Fallback: ask the host to re-broadcast live data
+    const hostUserId = liveRooms.has(liveHistoryId)
+      ? [...liveRooms.get(liveHistoryId)].map(sid => {
+          for (const [uid, s] of userSockets) { if (s.id === sid) return uid }
+          return null
+        }).find(Boolean)
+      : null
+
+    if (hostUserId) {
+      const hostSock = userSockets.get(hostUserId)
+      if (hostSock) hostSock.emit('requestLiveObjectBroadcast', { liveHistoryId, requesterId })
+    } else {
+      // No host found — live may have ended
+      socket.emit('singleLiveUserResponse', null)
+    }
+  })
 
   // HOST emits this when they start their own live room
   socket.on('joinLiveRoom', (raw) => {
