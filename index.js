@@ -204,8 +204,8 @@ io.on('connection', (socket) => {
     addViewer(liveHistoryId, viewerUserId || userId, data)
     const count = viewerCount(liveHistoryId)
     log('countLiveJoin', `user=${userId} room=${liveHistoryId} viewers=${count}`)
-    // Notify room of new viewer (includes name/image for join message)
-    broadcastToRoom(liveHistoryId, 'countLiveJoin', { ...data, viewerCount: count })
+    // Notify room of new viewer (send as JSON string for Flutter compatibility)
+    broadcastToRoom(liveHistoryId, 'countLiveJoin', JSON.stringify({ ...data, viewerCount: count }))
     // Send entry effect if provided
     if (data.entryRide) broadcastToRoom(liveHistoryId, 'fireEntryEffect', data, socket.id)
     // Broadcast full viewer list so the drawer updates
