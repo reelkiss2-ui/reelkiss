@@ -220,7 +220,7 @@ io.on('connection', (socket) => {
     liveRooms.get(liveHistoryId)?.delete(socket.id)
     removeViewer(liveHistoryId, viewerUserId || userId)
     const count = viewerCount(liveHistoryId)
-    broadcastToRoom(liveHistoryId, 'reduceLiveJoiners', { ...data, viewerCount: count })
+    broadcastToRoom(liveHistoryId, 'reduceLiveJoiners', JSON.stringify({ ...data, viewerCount: count }))
     broadcastToRoom(liveHistoryId, 'liveViewersList', getViewerList(liveHistoryId))
     log('reduceLiveJoiners', `user=${userId} room=${liveHistoryId} viewers=${count}`)
   })
