@@ -250,12 +250,20 @@ io.on('connection', (socket) => {
   // End live stream (by host or admin)
   socket.on('endLiveStream', (raw) => {
     const data = parse(raw)
-    const { liveHistoryId, userId: hostId } = data
+    const { liveHistoryId } = data
     if (!liveHistoryId) return
     log('endLiveStream', `room=${liveHistoryId} by=${userId}`)
     broadcastToRoom(liveHistoryId, 'endLiveStream', data)
     liveRooms.delete(liveHistoryId)
+    // Clean up PK partner's isPkMode too
+    const battle = pkBattles.get(liveHistoryId)
+    if (battle && db) {
+      const partner = battle.host1Live === liveHistoryId ? battle.host2Live : battle.host1Live
+      db.collection('liveStreams').doc(partner).update({ isPkMode: false }).catch(() => {})
+    }
     pkBattles.delete(liveHistoryId)
+    // Remove stream from Firestore (live ended)
+    if (db) db.collection('liveStreams').doc(liveHistoryId).delete().catch(() => {})
   })
 
   // Entry ride / effect when viewer enters
@@ -344,8 +352,14 @@ io.on('connection', (socket) => {
       pkBattles.set(host2Live, { host1UserId: host1Id, host2UserId: host2Id, host1Live, host2Live, score1: 0, score2: 0 })
       log('pkBattle:start', `host1=${host1Id}(${host1Live}) vs host2=${host2Id}(${host2Live})`)
 
+      // Update Firestore so both streams appear in the PK tab
+      if (db) {
+        const now = new Date().toISOString()
+        db.collection('liveStreams').doc(host1Live).update({ isPkMode: true, updatedAt: now }).catch(e => log('pkMode:update err', e.message))
+        db.collection('liveStreams').doc(host2Live).update({ isPkMode: true, updatedAt: now }).catch(e => log('pkMode:update err', e.message))
+      }
+
       // Also notify viewers in each room so they can join the opponent's channel
-      // Exclude the hosts to avoid duplicate processing on their side
       broadcastToRoom(host2Live, 'pkAnswer', response, host2Sock?.id)  // viewers watching CHALLENGER
       broadcastToRoom(host1Live, 'pkAnswer', response, host1Sock?.id)  // viewers watching ACCEPTER
     }
@@ -413,6 +427,13 @@ io.on('connection', (socket) => {
       pkBattles.delete(battle.host1Live)
       pkBattles.delete(battle.host2Live)
       log('pkEnd', `liveHistoryId=${liveHistoryId} winner=${isWinner} scores=${battle.score1}:${battle.score2}`)
+
+      // Restore streams to explore tab
+      if (db) {
+        const now = new Date().toISOString()
+        db.collection('liveStreams').doc(battle.host1Live).update({ isPkMode: false, updatedAt: now }).catch(() => {})
+        db.collection('liveStreams').doc(battle.host2Live).update({ isPkMode: false, updatedAt: now }).catch(() => {})
+      }
     } else {
       broadcastToRoom(liveHistoryId, 'pkEnd', data)
     }
